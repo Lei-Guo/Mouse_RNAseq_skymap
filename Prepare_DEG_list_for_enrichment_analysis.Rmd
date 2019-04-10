@@ -1,0 +1,80 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Rscript -e "rmarkdown::render('Prepare_DEG_list_for_enrichment_analysis.Rmd')"
+```{r loading packages}
+library(wrapr)
+library(data.table)
+library(stringr)
+rm(list=ls())
+```
+
+
+
+Reading DEGs and meta file
+```{r Reading DEGs and meta file} 
+degs <- fread("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/DEGs_combined_filtered_p0.05_fc1.2.csv")
+# adding the study id column
+degs$Study_ID <- sapply(str_split(degs$Contrast, "/"), "[[", 1)
+
+meta <- fread("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/meta_sra_search+79RNAseq_mouse_parsed_annotated.tsv")
+```
+
+
+Extracting studies using AD models
+```{r Extracting studies using AD models}
+# getting DEG sets using AD models
+meta_ad <- meta[AD_Model != ""]
+
+degs_ad <- degs[Study_ID %in% meta_ad$Study_ID]
+
+# extracting DEG sets between AD and control groups
+ad_nl_groups <- c("SRP050894/DEG_CA1_APP_veh-CA1_OldVeh", "SRP050894/DEG_CA1_APP_veh-CA1_YoungVeh", "SRP050894/DEG_CA1_WT_veh-CA1_APP_veh", "SRP073608/DEG_APP23_OE-WT", "SRP096851/DEG_APPPS1__Vehicle-WT_Vehicle", "SRP109283/DEG_WT-APP")
+
+degs_ad <- degs_ad[Contrast %in% ad_nl_groups]
+
+# changing logFC sign for NL VS AD groups
+degs_ad[Contrast %in% c("SRP050894/DEG_CA1_WT_veh-CA1_APP_veh", "SRP109283/DEG_WT-APP")][["logFC"]] <- -1 * degs_ad[Contrast %in% c("SRP050894/DEG_CA1_WT_veh-CA1_APP_veh", "SRP109283/DEG_WT-APP")][["logFC"]]
+
+
+# adding direction info for the contrast column
+degs_ad[["Contrast"]] <-  paste0(degs_ad$Contrast, ifelse(degs_ad$logFC > 0, "_up", "_down"))
+
+degs_ad$V1 <- toupper(degs_ad$V1)
+```
+
+
+
+Reading human DEG sets
+```{r Reading human DEG sets}
+# deg_file_path <- c("C:/Users/guol03/Work/AD_data_and_scripts/Results/DEG_results_2/non_filtered/AD-NL/bm10/DEG_ADvsNormal.csv", "C:/Users/guol03/Work/AD_data_and_scripts/Results/DEG_results_2/non_filtered/AD-NL/bm22/DEG_ADvsNormal.csv", "C:/Users/guol03/Work/AD_data_and_scripts/Results/DEG_results_2/non_filtered/AD-NL/bm36/DEG_ADvsNormal.csv", "C:/Users/guol03/Work/AD_data_and_scripts/Results/DEG_results_2/non_filtered/AD-NL/bm44/DEG_ADvsNormal.csv", "C:/Users/guol03/Work/AD_data_and_scripts/Results/DEG_results_2/non_filtered/AD-NL/rosmap/DEG_ADvsNormal.csv", "C:/Users/guol03/Projects/IFITM3/DEGs/DEG_AD-NL_TCX_Mayo.csv", "C:/Users/guol03/Projects/IFITM3/DEGs/DEG_AD-NL_CBE_Mayo.csv")
+# 
+# human_deg <- lapply(deg_file_path, fread)
+# names(human_deg) <- c("BM10", "BM22", "BM36", "BM44", "ROSMAP", "Mayo_TCX", "Mayo_CBE")
+# 
+# # filtering by p and logfc
+# human_deg <- lapply(human_deg, function(x) x[adj.P.Val < 0.05 & abs(logFC) > log2(1.2)])
+# 
+# human_deg <- human_deg[c("BM36", "Mayo_TCX")]
+# human_deg$Mayo_TCX <- human_deg$Mayo_TCX[, c(1, 8, 2:7)]
+# colnames(human_deg$Mayo_TCX)[2] <- "geneSymbol"
+# 
+# # labeling DEGs by dataset and direction
+# human_deg$BM36$Contrast <- ifelse(human_deg$BM36$logFC > 0, "AD-NL_BM36_up", "AD-NL_BM36_down")
+# human_deg$Mayo_TCX$Contrast <- ifelse(human_deg$Mayo_TCX$logFC > 0, "AD-NL_Mayo_TCX_up", "AD-NL_MayoTCX_down")
+# 
+# 
+# human_deg <- rbindlist(human_deg)
+```
+
+
+Writing the results
+```{r Writing the results}
+fwrite(degs_ad[, c("V1", "Contrast"), with = F], "/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/Enrichment/DEG_AD_NL_mouse.tsv", sep = "\t")
+
+# fwrite(human_deg[, c("geneSymbol", "Contrast"), with = F],  "C:/Users/guol03/Projects/downloaded_ad_data/mouse/geo/skymap/mouse_brain_rnaseq_filtered_results_final/Enrichment/human_deg_ad_nl.tsv", sep = "\t")
+```
+

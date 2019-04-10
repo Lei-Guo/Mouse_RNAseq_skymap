@@ -1,0 +1,52 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Rscript -e "rmarkdown::render('Lollipop_Functional_Enrichment.Rmd')"
+
+Loading packages
+```{r loading packages}
+library(wrapr)
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+rm(list=ls())
+```
+
+
+Reading consensus GO enrichment results
+```{r Reading consensus GO enrichment results}
+deg_enrich <- fread("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/Enrichment/DEG_AD_NL_mouse_Ontology.xls")
+
+deg_enrich <- deg_enrich[Corrected_P < 0.05]
+
+deg_enrich <- deg_enrich[!duplicated(deg_enrich$Gene.Category), ]
+
+deg_enrich_up <- deg_enrich[grepl("_up", deg_enrich$Module), ]
+
+deg_enrich_down <- deg_enrich[grepl("_down", deg_enrich$Module), ]
+
+
+# order GO by P
+deg_enrich_up$Gene.Category <- factor(deg_enrich_up$Gene.Category, levels = rev(deg_enrich_up$Gene.Category))
+
+deg_enrich_down$Gene.Category <- factor(deg_enrich_down$Gene.Category, levels = rev(deg_enrich_down$Gene.Category))
+```
+
+
+Plotting top 15 enriched terms
+```{r Plotting top 15 enriched terms}
+# for up_regulated genes
+plot_enrich_up <- ggplot(deg_enrich_up[1:15, ], aes(x=Gene.Category, y=-log10(Corrected_P))) + geom_point(size=3) + geom_segment(aes(x=Gene.Category, xend=Gene.Category, y=0, yend=-log10(Corrected_P))) + theme(axis.text.x = element_text(angle=90)) + xlab("Enriched Pathways (Genes up-regulated in AD)") + ylab("-Log10(P)") + coord_flip() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+ggsave("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/Enrichment/DEG_AD_NL_mouse_up_GO_enrich_plot.png", plot_enrich_up)
+
+
+# for down_regulated genes
+plot_enrich_down <- ggplot(deg_enrich_down[1:15, ], aes(x=Gene.Category, y=-log10(Corrected_P))) + geom_point(size=3) + geom_segment(aes(x=Gene.Category, xend=Gene.Category, y=0, yend=-log10(Corrected_P))) + theme(axis.text.x = element_text(angle=90)) + xlab("Enriched Pathways (Genes down-regulated in AD)") + ylab("-Log10(P)") + coord_flip() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+ggsave("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/Enrichment/DEG_AD_NL_mouse_down_GO_enrich_plot.png", plot_enrich_down)
+```
+

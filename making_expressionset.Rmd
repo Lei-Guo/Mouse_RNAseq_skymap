@@ -1,0 +1,55 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Rscript -e "rmarkdown::render('making_expressionset.Rmd')"
+```{r loading packages}
+library(wrapr)
+library(data.table)
+library(Biobase)
+rm(list=ls())
+```
+
+
+Reading meta and expr
+```{r Reading meta and expr}
+meta <- fread("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/meta_sra_search+79RNAseq_mouse_parsed_annotated.tsv")
+
+expr <- fread("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/expr_sra_search+79RNAseq_mouse_parsed_annotated.tsv", data.table = F)
+rownames(expr) <- expr[[1]]
+expr <- as.matrix(expr[, -1])
+
+expr <- log2(expr + 1)
+```
+
+
+
+Matching sample order between meta and expr
+```{r Matching sample order between meta and expr}
+meta <- meta[match(colnames(expr), meta$Run_ID), ]
+setDF(meta)
+rownames(meta) <- meta$Run_ID
+```
+
+
+
+Making expressionset for beta values
+```{r assembling expressionset}
+# check if rownames and colnames of meta and expr are same
+identical(colnames(expr), rownames(meta))
+
+# create meta info for the expressionset
+phenoData <- new("AnnotatedDataFrame", data = meta)
+
+# construct an expressionset for betaVal_plate_pmi_race_adj
+exprset <- ExpressionSet(assayData = expr, phenoData = phenoData)
+```
+
+
+Saving the exprset
+```{r Saving the exprset}
+saveRDS(exprset, "/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/exprset_sra_search+79RNAseq_mouse_parsed_annotated.RDS")
+```
+

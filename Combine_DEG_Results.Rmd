@@ -1,0 +1,55 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+Rscript -e "rmarkdown::render('Combine_DEG_Results.Rmd')"
+```{r loading packages}
+library(wrapr)
+library(data.table)
+rm(list=ls())
+```
+
+
+
+Reading DEGs
+```{r Reading DEGs} 
+deg_path <- "/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/"
+study_id <- list.files(deg_path)
+
+# reading DEGs
+deg_filenames_study <- lapply(study_id, function(x) paste0(paste0(deg_path, x, "/"), list.files(paste0(deg_path, x))))
+
+degs <- lapply(deg_filenames_study, function(x) lapply(x, fread, data.table = F))
+# naming each deg set
+deg_name <- lapply(deg_filenames_study, function(x) lapply(x, function(y) gsub("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/|\\.csv", "", y)))
+
+degs <- mapply(setNames, degs, deg_name, SIMPLIFY = F)
+```
+
+
+Combining DEG sets
+```{r Combining DEG sets}
+# adding a new column to each deg set
+group_nrow <- lapply(degs, function(x) lapply(x, nrow))
+group_name <- lapply(group_nrow, names)
+
+mod_col_ls <- mapply(function(x, y) mapply(rep, x, y, SIMPLIFY = F), group_name, group_nrow, SIMPLIFY = F)
+
+degs <- mapply(function(a, b) mapply(function(x, y) "[<-"(x, "Contrast", value = y) , a, b, SIMPLIFY = FALSE), degs, mod_col_ls, SIMPLIFY = F)
+
+degs <- rbindlist(unlist(degs, recursive = F))
+
+
+# subsetting by p and logfc
+deg_sig <- degs[adj.P.Val < 0.05 & abs(logFC) > log2(1.2)]
+```
+
+
+Writing the results
+```{r Writing the results}
+fwrite(deg_sig, "/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/DEGs_combined_filtered_p0.05_fc1.2.csv")
+```
+

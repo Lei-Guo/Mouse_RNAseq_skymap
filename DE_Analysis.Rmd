@@ -1,0 +1,108 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Rscript -e "rmarkdown::render('DE_Analysis.Rmd')"
+```{r loading packages}
+library(wrapr)
+library(data.table)
+library(Biobase)
+library(limma)
+rm(list=ls())
+```
+
+
+
+Functions for DE
+```{r Functions for DE}
+# subsetting expressionset by comparison groups
+exprset_subset <- function(expressionset, comparison_groups){
+lapply(comparison_groups, function(x) expressionset[, expressionset$treatment_info == x[1] | expressionset$treatment_info == x[2]])
+}
+
+
+# DE Analysis
+de_analysis <- function(expressionset, contrast, treatment_column){ 
+# making design matrix
+design <- model.matrix(~ 0 + factor(expressionset[[treatment_column]]))
+colnames(design) <- levels(factor(expressionset[[treatment_column]]))
+
+# making contrast matrix
+ctrst <- makeContrasts(contrasts = contrast, levels = design)
+
+# de analyis
+fit <- lmFit(expressionset, design)
+fit_2 <- contrasts.fit(fit, ctrst)
+fit_2 <- eBayes(fit_2)
+
+# saving the results
+res <- topTable(fit_2, n = Inf)
+}
+
+# saving DEGs
+save_degs <- function(deg_df_list, comparison_group_list, outpath){
+invisible(mapply(fwrite, unlist(deg_df_list, recursive = F), paste0(outpath, "DEG_", comparison_group_list, ".csv"), MoreArgs = list(row.names = T)))
+}
+```
+
+
+
+Reading expressionset
+```{r Reading expressionset}
+exprset <- readRDS("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/exprset_sra_search+79RNAseq_mouse_parsed_annotated.RDS")
+
+# removing studies with small sample size
+group_sample_size <- as.data.table(table(pData(exprset)$treatment_info))
+study_id_sml_samplesize <- pData(exprset)$Study_ID[match(group_sample_size[N == 1][[1]], pData(exprset)$treatment_info)]
+
+exprset <- exprset[, !(exprset$Study_ID %in% study_id_sml_samplesize)]
+```
+
+
+
+Subsetting the expressionset
+```{r Subsetting the expressionset}
+# unique study ids
+study_ids <- unique(pData(exprset)$Study_ID)
+
+# separating expressionset by study ids
+exprset_ls_studyid <- lapply(study_ids, function(x) exprset[, exprset$Study_ID == x])
+
+# removing low expressed genes for each study
+exprset_ls_studyid <- lapply(exprset_ls_studyid, function(x) x[rowSums(exprs(x) > 0) >= ncol(x), ])
+names(exprset_ls_studyid) <- study_ids
+
+# removing studies with no gene expression values
+exprset_ls_studyid <- exprset_ls_studyid[(sapply(exprset_ls_studyid, nrow) != 0)]
+
+# setting up contrast groups for each study
+cmb_groups_ls <- lapply(exprset_ls_studyid, function(x) combn(unique(pData(x)$treatment_info), 2))
+cmb_groups_ls <- lapply(cmb_groups_ls, function(x) apply(x, 2, as.list))
+contrast_ls <- lapply(cmb_groups_ls, function(x) sapply(x, function(y) paste(y[1], y[2], sep = "-")))
+
+
+# subsetting expressionset by study ids and comparison grups 
+exprset_ls_groups <- mapply(exprset_subset, exprset_ls_studyid, cmb_groups_ls, SIMPLIFY = F)
+```
+
+
+
+DE analysis
+```{r DE analysis}
+degs <- mapply(function(x, y) mapply(de_analysis, x, y, MoreArgs = list(treatment_column = "treatment_info"), SIMPLIFY = F), exprset_ls_groups, contrast_ls, SIMPLIFY = F)
+```
+
+
+
+Saving results
+```{r Saving results}
+# making folders for each study
+invisible(lapply(paste0("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/", names(degs)), dir.create))
+
+
+# writing the resultss
+invisible(lapply(names(degs), function(x) save_degs(degs[x], unlist(contrast_ls[x]), paste0("/sc/orga/projects/zhangb03a/shared/skymap/mouse_brain_rnaseq_expanded/DEGs/", x, "/"))))
+```
+
